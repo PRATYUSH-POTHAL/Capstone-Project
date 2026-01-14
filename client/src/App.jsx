@@ -16,9 +16,7 @@ import Home from "./pages/Home"
 
 function App() {
   return (
-    <div style={{ padding: "20px", fontSize: "24px" }}>
-      SCROLLA is working ✅
-    </div>
+    <Home />
   )
 }
 
