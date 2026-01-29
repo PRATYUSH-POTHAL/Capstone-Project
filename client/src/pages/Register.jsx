@@ -7,6 +7,7 @@ const Register = () => {
     name: '',
     email: '',
     username: '',
+    age: '',
     password: '',
     confirmPassword: ''
   });
@@ -35,6 +36,7 @@ const Register = () => {
         name: formData.name,
         email: formData.email,
         username: formData.username,
+        age: parseInt(formData.age),
         password: formData.password
       });
       navigate('/');
@@ -49,7 +51,7 @@ const Register = () => {
     <div className="min-h-screen bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-blue-600 mb-2">SocialHub</h1>
+          <h1 className="text-4xl font-bold text-blue-600 mb-2">Scrolla</h1>
           <p className="text-gray-600">Create your account to get started</p>
         </div>
 
@@ -97,6 +99,22 @@ const Register = () => {
               name="email"
               value={formData.email}
               onChange={handleChange}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Age
+            </label>
+            <input
+              type="number"
+              name="age"
+              value={formData.age}
+              onChange={handleChange}
+              min="1"
+              max="120"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />

@@ -11,6 +11,7 @@
 // export default Home
 
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Heart,
   MessageCircle,
@@ -24,14 +25,18 @@ import {
   Settings,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import Avatar from "../components/Avatar";
+import ShareModal from "../components/ShareModal";
 import {
   fetchPosts as fetchPostsApi,
   createPost as createPostApi,
   likePost as likePostApi,
+  deletePost as deletePostApi,
 } from "../services/api";
 
 const Home = () => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const displayName = user?.name || user?.username || "Guest";
   const firstName = displayName.split(" ")[0] || "Guest";
   const avatarChar = displayName.charAt(0)?.toUpperCase() || "G";
@@ -41,6 +46,11 @@ const Home = () => {
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [filePreviews, setFilePreviews] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [postToShare, setPostToShare] = useState(null);
 
   useEffect(() => {
     fetchPosts();
@@ -49,11 +59,20 @@ const Home = () => {
   const fetchPosts = async () => {
     try {
       setLoading(true);
-      const data = await fetchPostsApi();
-      const normalized = Array.isArray(data) ? data : [];
+      const data = await fetchPostsApi({
+        category: filter,
+        search: searchQuery,
+      });
+      const normalized = Array.isArray(data?.posts) ? data.posts : Array.isArray(data) ? data : [];
+      
+      // Debug: Log to check if author data is coming through
+      if (normalized.length > 0) {
+        console.log('Sample post with author:', normalized[0]);
+      }
+      
       const filtered = normalized.filter((p) => {
         const content = (p?.content || "").toLowerCase();
-        const username = (p?.username || "").toLowerCase();
+        const username = (p?.author?.username || p?.username || "").toLowerCase();
         const q = (searchQuery || "").toLowerCase().trim();
         if (q && !content.includes(q) && !username.includes(q)) return false;
         return true;
@@ -68,19 +87,86 @@ const Home = () => {
 
   const handleCreatePost = async () => {
     if (!newPost.trim()) return;
+    if (uploading) return; // Prevent double submission
 
     try {
-      const created = await createPostApi({
-        username: user?.username || user?.name || "anonymous",
+      setUploading(true);
+      let mediaItems = [];
+
+      // Handle multiple file uploads
+      if (filePreviews.length > 0) {
+        for (const preview of filePreviews) {
+          // Check file size (limit to ~10MB for base64)
+          const base64Length = preview.url.length;
+          const sizeInMB = (base64Length * 0.75) / (1024 * 1024);
+          if (sizeInMB > 10) {
+            alert('One or more files are too large. Please select files smaller than 10MB each.');
+            setUploading(false);
+            return;
+          }
+          mediaItems.push({
+            url: preview.url,
+            type: preview.type,
+          });
+        }
+      }
+
+      const postData = {
         content: newPost,
-      });
+        category: 'general',
+        mediaItems: mediaItems,
+        // Keep backward compatibility
+        mediaUrl: mediaItems.length > 0 ? mediaItems[0].url : '',
+        mediaType: mediaItems.length > 0 ? mediaItems[0].type : 'none',
+      };
+
+      const created = await createPostApi(postData);
       setPosts([created, ...posts]);
       setNewPost('');
       setShowNewPost(false);
+      setSelectedFiles([]);
+      setFilePreviews([]);
     } catch (error) {
       console.error('Error creating post:', error);
-      alert('Failed to create post');
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to create post';
+      alert(`Failed to create post: ${errorMessage}`);
+    } finally {
+      setUploading(false);
     }
+  };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    // Validate file types and add to arrays
+    files.forEach(file => {
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+
+      if (!isImage && !isVideo) {
+        alert(`${file.name} is not a valid image or video file`);
+        return;
+      }
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFilePreviews(prev => [...prev, {
+          url: reader.result,
+          type: isVideo ? 'video' : 'image',
+          name: file.name,
+        }]);
+      };
+      reader.readAsDataURL(file);
+      
+      setSelectedFiles(prev => [...prev, file]);
+    });
+  };
+
+  const removeFile = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    setFilePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleLike = async (postId) => {
@@ -92,8 +178,21 @@ const Home = () => {
     }
   };
 
+  const handleShare = (post) => {
+    setPostToShare(post);
+    setShareModalOpen(true);
+  };
+
   const handleDelete = async (postId) => {
-    alert("Delete is not implemented on the backend yet.");
+    if (!window.confirm('Are you sure you want to delete this post?')) return;
+
+    try {
+      await deletePostApi(postId);
+      setPosts(posts.filter((post) => post._id !== postId));
+    } catch (error) {
+      console.error('Error deleting post:', error);
+      alert('Failed to delete post');
+    }
   };
 
   const getTimeAgo = (timestamp) => {
@@ -112,7 +211,7 @@ const Home = () => {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-8">
-            <h1 className="text-2xl font-bold text-blue-600">SocialHub</h1>
+            <h1 className="text-2xl font-bold text-blue-600">Scrolla</h1>
             <div className="relative hidden md:block">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
               <input
@@ -128,12 +227,16 @@ const Home = () => {
             <button className="p-2 hover:bg-gray-100 rounded-full">
               <Bell size={24} className="text-gray-600" />
             </button>
-            <button className="p-2 hover:bg-gray-100 rounded-full">
+            <button 
+              onClick={() => navigate('/dashboard')}
+              className="p-2 hover:bg-gray-100 rounded-full"
+              title="Dashboard"
+            >
               <Settings size={24} className="text-gray-600" />
             </button>
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-                {avatarChar}
+              <div onClick={() => navigate('/dashboard')} className="cursor-pointer hover:opacity-80">
+                <Avatar user={user} size="md" />
               </div>
               <button 
                 onClick={logout}
@@ -177,9 +280,7 @@ const Home = () => {
             {/* Create Post */}
             <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
               <div className="flex gap-3">
-                <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-                  {avatarChar}
-                </div>
+                <Avatar user={user} size="md" />
                 <button
                   onClick={() => setShowNewPost(true)}
                   className="flex-1 text-left px-4 py-3 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200"
@@ -197,20 +298,59 @@ const Home = () => {
                     className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                     rows="4"
                   />
+                  
+                  {/* File Previews */}
+                  {filePreviews.length > 0 && (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {filePreviews.map((preview, index) => (
+                        <div key={index} className="relative">
+                          {preview.type === 'image' ? (
+                            <img 
+                              src={preview.url} 
+                              alt={`Preview ${index + 1}`}
+                              className="w-full h-48 rounded-lg object-cover"
+                            />
+                          ) : (
+                            <video 
+                              src={preview.url} 
+                              controls 
+                              className="w-full h-48 rounded-lg"
+                            />
+                          )}
+                          <button
+                            onClick={() => removeFile(index)}
+                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between mt-3">
                     <div className="flex gap-2">
-                      <button className="p-2 hover:bg-gray-100 rounded-full">
+                      <input
+                        type="file"
+                        id="media-upload"
+                        accept="image/*,video/*"
+                        onChange={handleFileSelect}
+                        multiple
+                        className="hidden"
+                      />
+                      <label htmlFor="media-upload" className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-full cursor-pointer">
                         <Image size={20} className="text-gray-600" />
-                      </button>
-                      <button className="p-2 hover:bg-gray-100 rounded-full">
                         <Video size={20} className="text-gray-600" />
-                      </button>
+                        <span className="text-sm text-gray-600">Add Photos/Videos</span>
+                      </label>
                     </div>
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
                           setShowNewPost(false);
                           setNewPost('');
+                          setSelectedFiles([]);
+                          setFilePreviews([]);
                         }}
                         className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                       >
@@ -218,10 +358,10 @@ const Home = () => {
                       </button>
                       <button
                         onClick={handleCreatePost}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                        disabled={!newPost.trim()}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={!newPost.trim() || uploading}
                       >
-                        Post
+                        {uploading ? 'Posting...' : 'Post'}
                       </button>
                     </div>
                   </div>
@@ -244,19 +384,26 @@ const Home = () => {
                   <article key={post._id} className="bg-white rounded-lg shadow-sm p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex gap-3">
-                        <div className="w-12 h-12 bg-linear-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                          {post.username?.charAt(0)?.toUpperCase()}
-                        </div>
+                        <Avatar user={post.author} size="lg" />
                         <div>
-                          <h3 className="font-semibold text-gray-900">{post.username}</h3>
+                          <h3 className="font-semibold text-gray-900">{post.author?.name || post.username}</h3>
                           <div className="flex items-center gap-2 text-sm text-gray-500">
-                            <span>@{post.username}</span>
+                            <span>@{post.author?.username || post.username}</span>
                             <span>•</span>
                             <span>{getTimeAgo(post.createdAt)}</span>
                           </div>
                         </div>
                       </div>
                       <div className="flex gap-2">
+                        {post.author?._id === user?._id && (
+                          <button
+                            onClick={() => handleDelete(post._id)}
+                            className="p-2 hover:bg-red-50 rounded-full"
+                            title="Delete"
+                          >
+                            <span className="text-red-600 text-sm font-semibold">Del</span>
+                          </button>
+                        )}
                         <button className="p-2 hover:bg-gray-100 rounded-full">
                           <MoreVertical size={18} className="text-gray-600" />
                         </button>
@@ -264,6 +411,51 @@ const Home = () => {
                     </div>
 
                     <p className="text-gray-800 mb-4">{post.content}</p>
+
+                    {/* Media Display - Support for multiple media items */}
+                    {post.mediaItems && post.mediaItems.length > 0 ? (
+                      <div className={`mb-4 grid gap-2 ${post.mediaItems.length === 1 ? 'grid-cols-1' : post.mediaItems.length === 2 ? 'grid-cols-2' : 'grid-cols-2'}`}>
+                        {post.mediaItems.map((media, index) => (
+                          <div key={index} className="rounded-lg overflow-hidden">
+                            {media.type === 'image' ? (
+                              <img 
+                                src={media.url} 
+                                alt={`Post media ${index + 1}`}
+                                className="w-full h-full max-h-96 object-cover"
+                              />
+                            ) : (
+                              <video 
+                                src={media.url} 
+                                controls 
+                                className="w-full max-h-96"
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <>
+                        {/* Backward compatibility for old single media posts */}
+                        {post.mediaUrl && post.mediaType === 'image' && (
+                          <div className="mb-4 rounded-lg overflow-hidden">
+                            <img 
+                              src={post.mediaUrl} 
+                              alt="Post media" 
+                              className="w-full max-h-96 object-cover"
+                            />
+                          </div>
+                        )}
+                        {post.mediaUrl && post.mediaType === 'video' && (
+                          <div className="mb-4 rounded-lg overflow-hidden">
+                            <video 
+                              src={post.mediaUrl} 
+                              controls 
+                              className="w-full max-h-96"
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
 
                     <div className="flex items-center justify-between pt-4 border-t">
                       <div className="flex gap-6">
@@ -273,15 +465,18 @@ const Home = () => {
                         >
                           <Heart
                             size={20}
-                            className=""
+                            className={post.likes?.includes(user?._id) ? 'fill-red-500 text-red-500' : ''}
                           />
-                          <span className="text-sm">{post.likes ?? 0}</span>
+                          <span className="text-sm">{post.likes?.length || 0}</span>
                         </button>
                         <button className="flex items-center gap-2 text-gray-600 hover:text-blue-500">
                           <MessageCircle size={20} />
                           <span className="text-sm">{post.comments?.length || 0}</span>
                         </button>
-                        <button className="flex items-center gap-2 text-gray-600 hover:text-green-500">
+                        <button 
+                          onClick={() => handleShare(post)}
+                          className="flex items-center gap-2 text-gray-600 hover:text-green-500"
+                        >
                           <Share2 size={20} />
                         </button>
                       </div>
@@ -295,27 +490,16 @@ const Home = () => {
             )}
           </main>
 
-          {/* Right Sidebar */}
-          <aside className="col-span-3 hidden lg:block">
-            <div className="bg-white rounded-lg shadow-sm p-4 sticky top-20">
-              <h2 className="font-bold text-gray-900 mb-4">Trending Topics</h2>
-              <div className="space-y-4">
-                {[
-                  { tag: 'WebDevelopment', posts: '2.3K' },
-                  { tag: 'AI', posts: '1.8K' },
-                  { tag: 'UXDesign', posts: '1.2K' }
-                ].map((topic, i) => (
-                  <div key={i} className="pb-4 border-b last:border-0">
-                    <p className="text-sm text-gray-500">Trending</p>
-                    <p className="font-semibold text-gray-900">#{topic.tag}</p>
-                    <p className="text-sm text-gray-500">{topic.posts} posts</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </aside>
+
         </div>
       </div>
+
+      {/* Share Modal */}
+      <ShareModal 
+        isOpen={shareModalOpen} 
+        onClose={() => setShareModalOpen(false)} 
+        post={postToShare} 
+      />
     </div>
   );
 };

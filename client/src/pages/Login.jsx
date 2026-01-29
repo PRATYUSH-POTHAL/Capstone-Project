@@ -29,7 +29,7 @@ const Login = () => {
     <div className="min-h-screen bg-linear-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-blue-600 mb-2">SocialHub</h1>
+          <h1 className="text-4xl font-bold text-blue-600 mb-2">Scrolla</h1>
           <p className="text-gray-600">Welcome back! Please login to continue.</p>
         </div>
 

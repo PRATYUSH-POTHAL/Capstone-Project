@@ -1,95 +1,86 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import api from "../services/api";
 
 const AuthContext = createContext(null);
 
-const STORAGE_KEY = "scrolla.auth.user";
+const TOKEN_KEY = "token";
 
-const generateId = () => {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `user_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+const extractUser = (payload) => {
+  if (!payload || typeof payload !== "object") return null;
+  const { token: _token, ...rest } = payload;
+  return rest;
 };
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
-    } catch {
-      // ignore
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      api.defaults.headers.common.Authorization = `Bearer ${token}`;
+      fetchMe();
+    } else {
+      setLoading(false);
     }
   }, []);
 
-  const persistUser = (nextUser) => {
-    setUser(nextUser);
+  const fetchMe = async () => {
     try {
-      if (nextUser) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextUser));
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-      }
+      const response = await api.get("/auth/me");
+      setUser(response.data);
     } catch {
-      // ignore
+      localStorage.removeItem(TOKEN_KEY);
+      delete api.defaults.headers.common.Authorization;
+      setUser(null);
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Note: Your backend currently has no auth endpoints.
-  // These are lightweight local implementations so the UI can run.
-  const login = async (email, _password) => {
-    const existing = (() => {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : null;
-      } catch {
-        return null;
-      }
-    })();
-
-    if (existing?.email && existing.email === email) {
-      persistUser(existing);
-      return existing;
+  const login = async (email, password) => {
+    const response = await api.post("/auth/login", { email, password });
+    const token = response.data?.token;
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      api.defaults.headers.common.Authorization = `Bearer ${token}`;
     }
-
-    const username = email?.split("@")[0] || "user";
-    const nextUser = {
-      _id: generateId(),
-      name: username,
-      username,
-      email,
-    };
-
-    persistUser(nextUser);
-    return nextUser;
+    setUser(extractUser(response.data));
+    return response.data;
   };
 
-  const register = async ({ name, username, email, _password }) => {
-    const nextUser = {
-      _id: generateId(),
-      name,
-      username,
-      email,
-    };
-
-    persistUser(nextUser);
-    return nextUser;
+  const register = async (userData) => {
+    const response = await api.post("/auth/register", userData);
+    const token = response.data?.token;
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+      api.defaults.headers.common.Authorization = `Bearer ${token}`;
+    }
+    setUser(extractUser(response.data));
+    return response.data;
   };
 
   const logout = () => {
-    persistUser(null);
+    localStorage.removeItem(TOKEN_KEY);
+    delete api.defaults.headers.common.Authorization;
+    setUser(null);
+  };
+
+  const updateUser = (updatedUser) => {
+    setUser(updatedUser);
   };
 
   const value = useMemo(
     () => ({
       user,
+      loading,
       isAuthenticated: Boolean(user),
       login,
       register,
       logout,
+      updateUser,
     }),
-    [user]
+    [user, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
