@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { fetchPosts } from "../services/api"
+import api from "../services/api"
 
 const useFetchPosts = () => {
   const [posts, setPosts] = useState([])
@@ -7,9 +7,17 @@ const useFetchPosts = () => {
 
   useEffect(() => {
     const getPosts = async () => {
-      const data = await fetchPosts()
-      setPosts(data)
-      setLoading(false)
+      try {
+        const response = await api.get('/posts')
+        // Handle both array and object response
+        const postsData = response.data.posts || response.data || []
+        setPosts(postsData)
+      } catch (error) {
+        console.error('Error fetching posts:', error)
+        setPosts([])
+      } finally {
+        setLoading(false)
+      }
     }
     getPosts()
   }, [])

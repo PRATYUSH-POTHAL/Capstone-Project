@@ -23,32 +23,33 @@ import {
   Search,
   Bell,
   Settings,
+  UserPlus,
+  UserMinus,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import Avatar from "../components/Avatar";
 import ShareModal from "../components/ShareModal";
+import CreatePost from "../components/CreatePost";
 import {
   fetchPosts as fetchPostsApi,
   createPost as createPostApi,
   likePost as likePostApi,
   deletePost as deletePostApi,
+  followUser as followUserApi,
+  unfollowUser as unfollowUserApi,
 } from "../services/api";
 
 const Home = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
   const navigate = useNavigate();
   const displayName = user?.name || user?.username || "Guest";
   const firstName = displayName.split(" ")[0] || "Guest";
   const avatarChar = displayName.charAt(0)?.toUpperCase() || "G";
   const [posts, setPosts] = useState([]);
-  const [newPost, setNewPost] = useState('');
-  const [showNewPost, setShowNewPost] = useState(false);
+  const [showCreatePost, setShowCreatePost] = useState(false);
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [filePreviews, setFilePreviews] = useState([]);
-  const [uploading, setUploading] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [postToShare, setPostToShare] = useState(null);
 
@@ -85,88 +86,15 @@ const Home = () => {
     }
   };
 
-  const handleCreatePost = async () => {
-    if (!newPost.trim()) return;
-    if (uploading) return; // Prevent double submission
-
+  const handlePostCreated = async (postData) => {
     try {
-      setUploading(true);
-      let mediaItems = [];
-
-      // Handle multiple file uploads
-      if (filePreviews.length > 0) {
-        for (const preview of filePreviews) {
-          // Check file size (limit to ~10MB for base64)
-          const base64Length = preview.url.length;
-          const sizeInMB = (base64Length * 0.75) / (1024 * 1024);
-          if (sizeInMB > 10) {
-            alert('One or more files are too large. Please select files smaller than 10MB each.');
-            setUploading(false);
-            return;
-          }
-          mediaItems.push({
-            url: preview.url,
-            type: preview.type,
-          });
-        }
-      }
-
-      const postData = {
-        content: newPost,
-        category: 'general',
-        mediaItems: mediaItems,
-        // Keep backward compatibility
-        mediaUrl: mediaItems.length > 0 ? mediaItems[0].url : '',
-        mediaType: mediaItems.length > 0 ? mediaItems[0].type : 'none',
-      };
-
       const created = await createPostApi(postData);
       setPosts([created, ...posts]);
-      setNewPost('');
-      setShowNewPost(false);
-      setSelectedFiles([]);
-      setFilePreviews([]);
+      setShowCreatePost(false);
     } catch (error) {
       console.error('Error creating post:', error);
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to create post';
-      alert(`Failed to create post: ${errorMessage}`);
-    } finally {
-      setUploading(false);
+      throw error;
     }
-  };
-
-  const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files);
-    if (!files.length) return;
-
-    // Validate file types and add to arrays
-    files.forEach(file => {
-      const isImage = file.type.startsWith('image/');
-      const isVideo = file.type.startsWith('video/');
-
-      if (!isImage && !isVideo) {
-        alert(`${file.name} is not a valid image or video file`);
-        return;
-      }
-
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFilePreviews(prev => [...prev, {
-          url: reader.result,
-          type: isVideo ? 'video' : 'image',
-          name: file.name,
-        }]);
-      };
-      reader.readAsDataURL(file);
-      
-      setSelectedFiles(prev => [...prev, file]);
-    });
-  };
-
-  const removeFile = (index) => {
-    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
-    setFilePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleLike = async (postId) => {
@@ -181,6 +109,34 @@ const Home = () => {
   const handleShare = (post) => {
     setPostToShare(post);
     setShareModalOpen(true);
+  };
+
+  const handleFollow = async (userId) => {
+    try {
+      await followUserApi(userId);
+      // Update user's following list
+      updateUser({
+        ...user,
+        following: [...(user.following || []), userId]
+      });
+    } catch (error) {
+      console.error('Error following user:', error);
+      alert(error.response?.data?.message || 'Failed to follow user');
+    }
+  };
+
+  const handleUnfollow = async (userId) => {
+    try {
+      await unfollowUserApi(userId);
+      // Update user's following list
+      updateUser({
+        ...user,
+        following: (user.following || []).filter(id => id !== userId)
+      });
+    } catch (error) {
+      console.error('Error unfollowing user:', error);
+      alert('Failed to unfollow user');
+    }
   };
 
   const handleDelete = async (postId) => {
@@ -255,19 +211,27 @@ const Home = () => {
           <aside className="col-span-3 hidden lg:block">
             <div className="bg-white rounded-lg shadow-sm p-4 sticky top-20">
               <div className="mb-6">
-                <h3 className="font-semibold text-gray-900 mb-3">Filter by Category</h3>
+                <h3 className="font-semibold text-gray-900 mb-3">Filter by Mood</h3>
                 <div className="space-y-2">
-                  {['all', 'product', 'technology', 'design', 'general'].map(cat => (
+                  {[
+                    { value: 'all', label: 'All Posts', emoji: '📝' },
+                    { value: 'calm', label: 'Calm', emoji: '😌' },
+                    { value: 'energetic', label: 'Energetic', emoji: '⚡' },
+                    { value: 'motivational', label: 'Motivational', emoji: '💪' },
+                    { value: 'sad', label: 'Sad', emoji: '😢' },
+                    { value: 'fun', label: 'Fun', emoji: '🎉' }
+                  ].map(mood => (
                     <button
-                      key={cat}
-                      onClick={() => setFilter(cat)}
-                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                        filter === cat 
+                      key={mood.value}
+                      onClick={() => setFilter(mood.value)}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                        filter === mood.value 
                           ? 'bg-blue-50 text-blue-600' 
                           : 'text-gray-600 hover:bg-gray-100'
                       }`}
                     >
-                      {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                      <span>{mood.emoji}</span>
+                      <span>{mood.label}</span>
                     </button>
                   ))}
                 </div>
@@ -277,97 +241,28 @@ const Home = () => {
 
           {/* Main Feed */}
           <main className="col-span-12 lg:col-span-6">
-            {/* Create Post */}
-            <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-              <div className="flex gap-3">
-                <Avatar user={user} size="md" />
-                <button
-                  onClick={() => setShowNewPost(true)}
-                  className="flex-1 text-left px-4 py-3 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200"
-                >
-                  What's on your mind, {firstName}?
-                </button>
-              </div>
-              
-              {showNewPost && (
-                <div className="mt-4 border-t pt-4">
-                  <textarea
-                    value={newPost}
-                    onChange={(e) => setNewPost(e.target.value)}
-                    placeholder="Share your thoughts..."
-                    className="w-full p-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    rows="4"
-                  />
-                  
-                  {/* File Previews */}
-                  {filePreviews.length > 0 && (
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      {filePreviews.map((preview, index) => (
-                        <div key={index} className="relative">
-                          {preview.type === 'image' ? (
-                            <img 
-                              src={preview.url} 
-                              alt={`Preview ${index + 1}`}
-                              className="w-full h-48 rounded-lg object-cover"
-                            />
-                          ) : (
-                            <video 
-                              src={preview.url} 
-                              controls 
-                              className="w-full h-48 rounded-lg"
-                            />
-                          )}
-                          <button
-                            onClick={() => removeFile(index)}
-                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600"
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between mt-3">
-                    <div className="flex gap-2">
-                      <input
-                        type="file"
-                        id="media-upload"
-                        accept="image/*,video/*"
-                        onChange={handleFileSelect}
-                        multiple
-                        className="hidden"
-                      />
-                      <label htmlFor="media-upload" className="flex items-center gap-2 px-3 py-2 hover:bg-gray-100 rounded-full cursor-pointer">
-                        <Image size={20} className="text-gray-600" />
-                        <Video size={20} className="text-gray-600" />
-                        <span className="text-sm text-gray-600">Add Photos/Videos</span>
-                      </label>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setShowNewPost(false);
-                          setNewPost('');
-                          setSelectedFiles([]);
-                          setFilePreviews([]);
-                        }}
-                        className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleCreatePost}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={!newPost.trim() || uploading}
-                      >
-                        {uploading ? 'Posting...' : 'Post'}
-                      </button>
-                    </div>
-                  </div>
+            {/* Create Post Button */}
+            {!showCreatePost && (
+              <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+                <div className="flex gap-3">
+                  <Avatar user={user} size="md" />
+                  <button
+                    onClick={() => setShowCreatePost(true)}
+                    className="flex-1 text-left px-4 py-3 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200"
+                  >
+                    What's on your mind, {firstName}?
+                  </button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+            
+            {/* Create Post Component with Mood Selector */}
+            {showCreatePost && (
+              <CreatePost 
+                onPostCreated={handlePostCreated} 
+                onCancel={() => setShowCreatePost(false)}
+              />
+            )}
 
             {/* Posts */}
             {loading ? (
@@ -386,7 +281,34 @@ const Home = () => {
                       <div className="flex gap-3">
                         <Avatar user={post.author} size="lg" />
                         <div>
-                          <h3 className="font-semibold text-gray-900">{post.author?.name || post.username}</h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-semibold text-gray-900">{post.author?.name || post.username}</h3>
+                            {post.author?._id !== user?._id && (
+                              <button
+                                onClick={() => {
+                                  const isFollowing = user?.following?.includes(post.author._id);
+                                  isFollowing ? handleUnfollow(post.author._id) : handleFollow(post.author._id);
+                                }}
+                                className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                                  user?.following?.includes(post.author._id)
+                                    ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                                }`}
+                              >
+                                {user?.following?.includes(post.author._id) ? (
+                                  <>
+                                    <UserMinus size={14} />
+                                    <span>Unfollow</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <UserPlus size={14} />
+                                    <span>Follow</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 text-sm text-gray-500">
                             <span>@{post.author?.username || post.username}</span>
                             <span>•</span>
@@ -489,8 +411,6 @@ const Home = () => {
               </div>
             )}
           </main>
-
-
         </div>
       </div>
 

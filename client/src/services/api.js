@@ -64,3 +64,23 @@ export const updateUserProfile = async (profileData) => {
   const res = await api.put('/users/profile', profileData)
   return res.data
 }
+
+export const followUser = async (userId) => {
+  const res = await api.post(`/users/${userId}/follow`)
+  return res.data
+}
+
+export const unfollowUser = async (userId) => {
+  const res = await api.delete(`/users/${userId}/follow`)
+  return res.data
+}
+
+export const getUserFollowers = async (userId) => {
+  const res = await api.get(`/users/${userId}/followers`)
+  return res.data
+}
+
+export const getUserFollowing = async (userId) => {
+  const res = await api.get(`/users/${userId}/following`)
+  return res.data
+}

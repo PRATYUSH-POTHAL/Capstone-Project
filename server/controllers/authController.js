@@ -64,8 +64,12 @@ export const login = async (req, res) => {
 
     const user = await User.findOne({ email }).select('+password')
     
-    if (!user || !(await user.comparePassword(password))) {
-      return res.status(401).json({ message: 'Invalid credentials' })
+    if (!user) {
+      return res.status(401).json({ message: 'No account found with this email' })
+    }
+    
+    if (!(await user.comparePassword(password))) {
+      return res.status(401).json({ message: 'Wrong password. Please try again.' })
     }
 
     res.json({
@@ -117,6 +121,43 @@ export const getMe = async (req, res) => {
     const user = await User.findById(req.user._id)
     res.json(user)
   } catch (error) {
+    res.status(500).json({ message: error.message })
+  }
+}
+
+export const resetPassword = async (req, res) => {
+  try {
+    console.log('Reset password request received:', { email: req.body.email })
+    const { email, newPassword } = req.body
+
+    if (!email || !newPassword) {
+      console.log('Missing email or password')
+      return res.status(400).json({ message: 'Please provide email and new password' })
+    }
+
+    if (newPassword.length < 6) {
+      console.log('Password too short')
+      return res.status(400).json({ message: 'Password must be at least 6 characters' })
+    }
+
+    // Find user by email only
+    const user = await User.findOne({ email }).select('+password')
+    console.log('User found:', user ? 'Yes' : 'No')
+
+    if (!user) {
+      return res.status(404).json({ message: 'No account found with this email' })
+    }
+
+    // Update password - the pre-save hook will hash it automatically
+    user.password = newPassword
+    await user.save()
+    console.log('Password updated successfully')
+
+    res.json({
+      message: 'Password reset successful! You can now login with your new password.',
+    })
+  } catch (error) {
+    console.error('Reset password error:', error)
     res.status(500).json({ message: error.message })
   }
 }

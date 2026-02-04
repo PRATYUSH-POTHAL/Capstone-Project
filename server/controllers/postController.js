@@ -216,8 +216,13 @@ export const getPosts = async (req, res) => {
       query.ageRestriction = { $in: ['kids', 'teen'] }
     }
     
+    // Mood-based filtering (replacing category filtering)
     if (category && category !== 'all') {
-      query.category = category
+      // Check if it's a mood filter
+      const validMoods = ['calm', 'energetic', 'motivational', 'sad', 'fun']
+      if (validMoods.includes(category)) {
+        query.moodTags = category
+      }
     }
     
     if (search) {
@@ -307,7 +312,12 @@ export const likePost = async (req, res) => {
     }
 
     await post.save()
-    res.json(post)
+    
+    // Populate author information before returning
+    const populatedPost = await Post.findById(post._id)
+      .populate('author', 'name username avatar age userType')
+    
+    res.json(populatedPost)
   } catch (error) {
     res.status(500).json({ message: error.message })
   }
@@ -417,6 +427,74 @@ export const deletePost = async (req, res) => {
 
     await post.deleteOne()
     res.json({ message: 'Post deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ message: error.message })
+  }
+}
+
+// Update post
+export const updatePost = async (req, res) => {
+  try {
+    const { content } = req.body
+    const post = await Post.findById(req.params.id)
+
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' })
+    }
+
+    if (post.author.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to edit this post' })
+    }
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: 'Post content cannot be empty' })
+    }
+
+    post.content = content
+    post.updatedAt = new Date()
+    await post.save()
+
+    const updatedPost = await Post.findById(post._id)
+      .populate('author', 'name username avatar')
+      .populate('comments.user', 'name username avatar')
+
+    res.json(updatedPost)
+  } catch (error) {
+    res.status(500).json({ message: error.message })
+  }
+}
+
+// Like a comment
+export const likeComment = async (req, res) => {
+  try {
+    const { commentId } = req.params
+    const post = await Post.findOne({ 'comments._id': commentId })
+
+    if (!post) {
+      return res.status(404).json({ message: 'Comment not found' })
+    }
+
+    const comment = post.comments.id(commentId)
+    
+    if (!comment) {
+      return res.status(404).json({ message: 'Comment not found' })
+    }
+
+    const likeIndex = comment.likes.indexOf(req.user._id)
+
+    if (likeIndex > -1) {
+      comment.likes.splice(likeIndex, 1)
+    } else {
+      comment.likes.push(req.user._id)
+    }
+
+    await post.save()
+
+    const updatedPost = await Post.findById(post._id)
+      .populate('author', 'name username avatar')
+      .populate('comments.user', 'name username avatar')
+
+    res.json(updatedPost)
   } catch (error) {
     res.status(500).json({ message: error.message })
   }
