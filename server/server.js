@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
+import compression from 'compression'
 import connectDB from './config/db.js'
 import authRoutes from './routes/auth.js'
 import postRoutes from './routes/posts.js'
@@ -11,6 +12,9 @@ import { requireDb } from './middleware/requireDb.js'
 dotenv.config()
 
 const app = express()
+
+// Compression middleware for faster response
+app.use(compression())
 
 // Middleware
 const allowedOrigins = [
@@ -35,8 +39,8 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
-app.use(express.json({ limit: '50mb' }))
-app.use(express.urlencoded({ extended: true, limit: '50mb' }))
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 
 // Routes
 app.use('/api/auth', requireDb, authRoutes)

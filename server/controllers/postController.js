@@ -204,8 +204,8 @@ export const getPostsByHashtag = async (req, res) => {
 
 export const getPosts = async (req, res) => {
   try {
-    const { category, search, page = 1, limit = 10 } = req.query
-    const user = await User.findById(req.user._id)
+    const { category, search, page = 1, limit = 20 } = req.query
+    const user = await User.findById(req.user._id).lean()
     
     let query = {}
 
@@ -232,20 +232,19 @@ export const getPosts = async (req, res) => {
       ]
     }
 
+    // Optimized query with lean() for better performance
     const posts = await Post.find(query)
       .populate('author', 'name username avatar')
-      .populate('comments.user', 'name username avatar')
+      .select('-interactions -__v') // Exclude heavy fields
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit)
-
-    const count = await Post.countDocuments(query)
+      .lean()
 
     res.json({
       posts,
-      totalPages: Math.ceil(count / limit),
       currentPage: page,
-      total: count,
+      total: posts.length,
     })
   } catch (error) {
     res.status(500).json({ message: error.message })
@@ -495,6 +494,24 @@ export const likeComment = async (req, res) => {
       .populate('comments.user', 'name username avatar')
 
     res.json(updatedPost)
+  } catch (error) {
+    res.status(500).json({ message: error.message })
+  }
+}
+
+// Get comments for a specific post (optimized endpoint)
+export const getPostComments = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+      .select('comments')
+      .populate('comments.user', 'name username avatar')
+      .lean()
+
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found' })
+    }
+
+    res.json(post.comments || [])
   } catch (error) {
     res.status(500).json({ message: error.message })
   }

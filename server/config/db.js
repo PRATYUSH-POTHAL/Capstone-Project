@@ -20,7 +20,11 @@ const connectDB = async () => {
   }
 
   try {
-    const conn = await mongoose.connect(mongoUri)
+    const conn = await mongoose.connect(mongoUri, {
+      maxPoolSize: 10, // Maintain up to 10 socket connections
+      serverSelectionTimeoutMS: 5000, // Keep trying for 5 seconds
+      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+    })
     console.log(`MongoDB connected: ${conn.connection.host}`)
     return true
   } catch (err) {

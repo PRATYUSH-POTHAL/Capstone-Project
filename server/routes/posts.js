@@ -12,7 +12,8 @@ import {
   sharePost,
   addInteraction,
   getUserPosts,
-  likeComment
+  likeComment,
+  getPostComments
 } from '../controllers/postController.js'
 import { protect } from '../middleware/auth.js'
 
@@ -23,6 +24,7 @@ router.get('/feed', protect, getPersonalizedFeed)
 router.get('/kids-zone', protect, getKidsZoneContent)
 router.get('/hashtag/:hashtag', protect, getPostsByHashtag)
 router.get('/user/:username', protect, getUserPosts)
+router.get('/:id/comments', protect, getPostComments)
 router.post('/', protect, createPost)
 router.put('/:id', protect, updatePost)
 router.put('/:id/like', protect, likePost)

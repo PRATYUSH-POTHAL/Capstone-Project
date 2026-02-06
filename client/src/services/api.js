@@ -25,9 +25,15 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Only redirect to login on 401 Unauthorized errors
     if (error.response?.status === 401) {
+      console.error('Authentication error - redirecting to login')
       localStorage.removeItem('token')
+      delete api.defaults.headers.common.Authorization
       window.location.href = '/login'
+    } else {
+      // Log other errors but don't redirect
+      console.error('API Error:', error.response?.status, error.response?.data?.message || error.message)
     }
     return Promise.reject(error)
   }

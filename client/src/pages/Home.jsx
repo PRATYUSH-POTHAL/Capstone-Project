@@ -88,12 +88,16 @@ const Home = () => {
 
   const handlePostCreated = async (postData) => {
     try {
+      console.log('Creating post with data:', postData);
       const created = await createPostApi(postData);
+      console.log('Post created successfully:', created);
       setPosts([created, ...posts]);
       setShowCreatePost(false);
+      return created; // Return the created post instead of throwing
     } catch (error) {
-      console.error('Error creating post:', error);
-      throw error;
+      console.error('Error creating post:', error.response?.data || error.message);
+      alert(`Failed to create post: ${error.response?.data?.message || error.message}`);
+      // Don't rethrow - let CreatePost handle it
     }
   };
 

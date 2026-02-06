@@ -118,17 +118,18 @@ const CreatePost = ({ onPostCreated, onCancel }) => {
       };
 
       if (onPostCreated) {
-        await onPostCreated(postData);
+        const result = await onPostCreated(postData);
+        // Only reset if post was successfully created
+        if (result) {
+          setContent('');
+          setSelectedFiles([]);
+          setFilePreviews([]);
+          setMoodData(null);
+        }
       }
-
-      // Reset form
-      setContent('');
-      setSelectedFiles([]);
-      setFilePreviews([]);
-      setMoodData(null);
     } catch (error) {
       console.error('Error creating post:', error);
-      alert('Failed to create post. Please try again.');
+      // Don't show alert here - parent component handles it
     } finally {
       setUploading(false);
     }
@@ -168,6 +169,14 @@ const CreatePost = ({ onPostCreated, onCancel }) => {
         >
           <X size={20} />
         </button>
+      </div>
+
+      {/* Info Box */}
+      <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <p className="text-xs text-blue-800">
+          💡 <strong>Tip:</strong> Select a mood category below to make your post appear in specific mood filters. 
+          All posts also appear in "All Posts" view.
+        </p>
       </div>
       
       <textarea
